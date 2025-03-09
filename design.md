@@ -144,20 +144,20 @@ let entry_point := @(entry_point = true) {
     # to make a tuple, you just need to put at least
     # 2 things in sequence:
     
-    # type is "i32; i32"
+    # type is "i32 & i32"
     let tuple := 10 10;
-    # "mut i32; mut i32"
+    # "mut i32 & mut i32"
     let mut_tuple := (mut 10) (mut 10);
-    # "a: i32; b: i32"
+    # "a: i32 & b: i32"
     let named_tuple := (a := 10) (b := 10);
-    # "mut a: f32; b: i32"
+    # "mut a: f32 & b: i32"
     let named_tuple2 := (mut a: f32 = 0.5) (b := 10);
-    # syntax sugar for: "a: i32; b: i32"
+    # syntax sugar for: "a: i32 & b: i32"
     let named_tuple3: a, b: i32 = (.a = 10) (.b = 20);
   };
 
   {
-    # returns a unique named tuple with: "mut x: T; mut y: T"
+    # returns a unique named tuple with: "mut x: T & mut y: T"
     # and has a method called "add"
     # although this is allowed by the nature of the language
     # its not really "the correct" way to create a "struct"
@@ -165,19 +165,19 @@ let entry_point := @(entry_point = true) {
       let mut x := px;
       let mut y := py;
 
-      # @This here returns "(mut x, mut y: T)"
+      # @This here returns "(mut x: T & mut y: T)"
       let add := (v0, v1: @This) @This @(pure = true) {
         return: @This = (v0.x v1.x @add) (v0.y v1.y @add);
       };
     };
-    # mut x: i32; mut y: i32
+    # mut x: i32 & mut y: i32
     ((i32 $Vec2) == unique_named_tuple_i32_Vec2) @assert;
 
     let position: (i32 $Vec2) = (.x = 10) (.y = 10);
     let offset:   (i32 $Vec2) = (.x = 20) (.y = 0);
     # px and py here is i32:default,
     # and the syntax is expanded like this:
-    # let offseted_pos: mut a, mut b: i32 = (.a = i32:default) (.b = i32:default);
+    # let offseted_pos: mut a: i32 & mut b: i32 = (.a = i32:default) (.b = i32:default);
     let offseted_pos: (i32 $Vec2);
 
     ((i32 $Vec2) == (position @type)) @assert;
