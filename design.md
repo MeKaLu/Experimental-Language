@@ -135,6 +135,7 @@ let entry_point := @(entry_point = true) {
     let mut a, mut b: i32, i32;
     10 a @set;
     20 b @set;
+
     let c := a b @add;
     c == 30 @assert
   };
@@ -199,7 +200,7 @@ let entry_point := @(entry_point = true) {
           .y = (v0.y v1.y @add);
         );
         # or
-        return := (i32 Vec2)(
+        return := @This(
           .x = (v0.x v1.x @add);
           .y = (v0.y v1.y @add);
         );
