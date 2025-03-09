@@ -1,5 +1,5 @@
 let main := @(entry_point = true) {
-	let foo := "foo";
+	let foo : [3]u8 = "foo";
 	let mut int: i32 = 10;
 	discard := 20 a @set;
 };
