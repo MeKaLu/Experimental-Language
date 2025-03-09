@@ -15,11 +15,6 @@ const Token = struct {
     data: []u8 = undefined,
 };
 
-const Keywords = enum {
-    let,
-    discard,
-};
-
 const StatementType = enum {
     lhand,
     lhand_identifier,
@@ -27,7 +22,6 @@ const StatementType = enum {
     mhand_identifier,
     meqhand,
     rhand,
-
     done,
 };
 
@@ -38,17 +32,22 @@ const Statement = union(StatementType) {
     mhand_identifier: ?[]u8,
     meqhand: ?[]u8,
     rhand: ?[]u8,
-
     done: ?[]u8,
 };
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}).init;
     defer if (gpa.detectLeaks()) @panic("memory leak found!");
-    const allocator = gpa.allocator();
+    // arena allocator is better for this kinds of tasks
+    // TODO remove frees/deallocs in case of arena allocator
+    var arena_alloc = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena_alloc.deinit();
+    const allocator = arena_alloc.allocator();
 
+    // read file
     const current_dir = fs.cwd();
     const file = try fs.Dir.openFile(current_dir, "test", .{});
+    defer file.close();
     const file_size = try file.getEndPos();
     const file_buffer = try file.readToEndAlloc(allocator, file_size);
     defer allocator.free(file_buffer);
@@ -61,7 +60,7 @@ pub fn main() !void {
         token_list.deinit();
     }
 
-    // Split the tokens by space
+    // naive tokenizer
     {
         var slice_start: ?u64 = null;
         var line: u64 = 0;
@@ -69,7 +68,10 @@ pub fn main() !void {
 
         for (file_buffer, 0..) |c, i| {
             switch (c) {
-                ' ', ':', '=', '&', ';', '\t', '\n' => {
+                // zig fmt: off
+                ' ', '\t', '\n',
+                ':', '=', '&', '@', '$', '{', '}', '(', ')', ';' => {
+                // zig fmt: on
                     if (c == '\n') {
                         line += 1;
                         linec = 0;
@@ -88,7 +90,13 @@ pub fn main() !void {
                         slice_start = null;
                     } else ml.debug("empty slice start at line: {}:{}", .{ line, linec });
 
-                    if (c == ':' or c == '=' or c == '&' or c == ';') {
+                    // in case of the special symbols here, they are also
+                    // tokens and need to be appended accordingly
+                    // zig fmt: off
+                    if (c == ':' or c == '=' or c == '&' or
+                        c == '@' or c == '$' or c == '{' or
+                        c == '}' or c == '(' or c == ')' or c == ';') {
+                    // zig fmt: on
                         try token_list.append(.{
                             .line = line,
                             .linec = linec,
@@ -112,7 +120,15 @@ pub fn main() !void {
 
     // parse the tokens
     {
-        // TODO make them copy not just ptr
+        // TODO instead of panic, use proper error handling
+        // and print them accordingly to the user
+
+        // TODO basic verification for special keywords
+        // should probably happen here
+        // also, this should reduce mistakes by avoiding code duplication
+
+        // TODO make them copy not just ptr and have line position info
+        // or just make them point to a token
         var statements = std.ArrayList(Statement).init(allocator);
         defer statements.deinit();
 
@@ -121,9 +137,12 @@ pub fn main() !void {
         for (token_list.items) |item| {
             sw: switch (state) {
                 .lhand => {
-                    // TODO
-                    // backpatch recursive expressions
-                    // or find a way to do it without backpatch
+                    // TODO rewrite the entire recursion handling:
+                    // recursive expressions
+                    // basically look into future and count the brackets, semicolumns and things like that
+                    // see if they match, if they don't thats a syntax error
+                    // or do this before parsing, to check the "correctness" of the syntax
+                    // after that we can be sure that parsing, at least, will be syntacticly "correct"
                     if (mem.eql(u8, item.data, "let")) {
                         statement_recurse += 1;
                         try statements.append(.{ .lhand = item.data });
@@ -135,6 +154,7 @@ pub fn main() !void {
                         try statements.append(.{ .lhand = item.data });
                         state = .mhand;
                     } else {
+                        // TODO this is iffy
                         if (statement_recurse == 1) {
                             continue :sw .done;
                         } else @panic("unknown keyword!");
@@ -153,7 +173,7 @@ pub fn main() !void {
                     }
                 },
                 .mhand => {
-                    // verify operand
+                    // TODO verify operand
                     if (mem.eql(u8, item.data, ":")) {
                         try statements.append(.{ .mhand = item.data });
                         state = .mhand_identifier;
@@ -171,14 +191,13 @@ pub fn main() !void {
                     }
                 },
                 .meqhand => {
-                    // verify operand
+                    // TODO verify operand
                     if (mem.eql(u8, item.data, "=")) {
                         try statements.append(.{ .meqhand = item.data });
                         state = .rhand;
                     } else @panic("unknown meqhand operand!");
                 },
                 .rhand => {
-                    // TODO
                     if (mem.eql(u8, item.data, "let") or mem.eql(u8, item.data, "discard")) {
                         continue :sw .lhand;
                     } else if (mem.eql(u8, item.data, ";")) {
