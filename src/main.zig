@@ -83,8 +83,8 @@ const Token = struct {
     }
 };
 
+/// Caller owns the memory
 fn readFile(allocator: mem.Allocator, filename: []const u8) ![]u8 {
-    // read file
     const current_dir = fs.cwd();
     const file = try fs.Dir.openFile(current_dir, filename, .{});
     defer file.close();
@@ -93,9 +93,8 @@ fn readFile(allocator: mem.Allocator, filename: []const u8) ![]u8 {
 }
 
 // naive tokenizer
+/// Caller owns the memory
 fn tokenize(allocator: mem.Allocator, source_code: []const u8) !std.ArrayList(Token) {
-
-    // no need to free bc arena allocator
     var token_list = std.ArrayList(Token).init(allocator);
 
     var slice_start: ?u64 = null;
@@ -130,9 +129,10 @@ fn tokenize(allocator: mem.Allocator, source_code: []const u8) !std.ArrayList(To
                 // in case of the special symbols here, they are also
                 // tokens and need to be appended accordingly
                 // zig fmt: off
-                if (c == ':' or c == '=' or c == '&' or c == ';' or
-                    c == '@' or c == '$' or c == '[' or c == ']' or
-                    c == '{' or c == '}' or c == '(' or c == ')' ) {
+                if (i + 1 < source_code.len and (
+                        c == ':' or c == '=' or c == '&' or c == ';' or
+                        c == '@' or c == '$' or c == '[' or c == ']' or
+                        c == '{' or c == '}' or c == '(' or c == ')')) {
                 // zig fmt: on
                     try token_list.append(.{
                         .line = line,
@@ -152,6 +152,7 @@ fn tokenize(allocator: mem.Allocator, source_code: []const u8) !std.ArrayList(To
     return token_list;
 }
 
+/// Caller owns the memory
 fn symbolize(allocator: mem.Allocator, tokens: []const Token) !std.ArrayList(Symbol) {
     var symbols = std.ArrayList(Symbol).init(allocator);
     for (tokens) |token| {
@@ -164,23 +165,27 @@ pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}).init;
     defer if (gpa.detectLeaks()) @panic("memory leak found!");
 
-    var arena_alloc = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer arena_alloc.deinit();
-    const allocator = arena_alloc.allocator();
+    // Making sure we are not forgetting all of these here uses arena allocator
+    arena_alloc_blk: {
+        var arena_alloc = std.heap.ArenaAllocator.init(gpa.allocator());
+        defer arena_alloc.deinit();
+        const allocator = arena_alloc.allocator();
 
-    // no need to free bc arena allocator
-    const source_code = try readFile(allocator, "test");
-    const tokens = try tokenize(allocator, source_code);
-    const symbols = try symbolize(allocator, tokens.items);
+        // no need to free bc arena allocator
+        const source_code = try readFile(allocator, "test");
+        const tokens = try tokenize(allocator, source_code);
+        const symbols = try symbolize(allocator, tokens.items);
 
-    for (tokens.items) |item| {
-        ml.debug("token found: \"{s}\"", .{item.data});
+        for (tokens.items) |item| {
+            ml.debug("token found: \"{s}\"", .{item.data});
+        }
+        ml.debug("------------------------------", .{});
+
+        for (symbols.items) |item| {
+            ml.debug("symbol found: {s} = \"{s}\"", .{ @tagName(item.tag), item.token.data });
+        }
+
+        ml.debug("------------------------------", .{});
+        break :arena_alloc_blk;
     }
-    ml.debug("------------------------------", .{});
-
-    for (symbols.items) |item| {
-        ml.debug("symbol found: {s} = \"{s}\"", .{ @tagName(item.tag), item.token.data });
-    }
-
-    ml.debug("------------------------------", .{});
 }
