@@ -261,6 +261,68 @@ pub fn main() !void {
             ml.info("Found [compiler expression] with identifier => {s}", .{syms[i].token.data});
         }
 
+        // Find the entry point "let"
+        i = 0;
+        while (i < syms.len) : (i += 1) {
+            _ = syms[i].expect(.st_let) orelse continue;
+            i += 1;
+            var let_ident = syms[i];
+            var r = syms[i].expectEither(&.{ .ident, .st_mut }) orelse continue;
+            if (r == .st_mut) {
+                i += 1;
+                _ = syms[i].expect(.ident) orelse continue;
+
+                let_ident = syms[i];
+            }
+
+            i += 1;
+            _ = syms[i].expect(.st_type) orelse continue;
+            i += 1;
+            _ = syms[i].expect(.st_eq) orelse continue;
+            i += 1;
+
+            _ = syms[i].expect(.exp_compiler) orelse continue;
+            i += 1;
+            _ = syms[i].expect(.op_lparan) orelse continue;
+            i += 1;
+            _ = syms[i].expect(.ident) orelse continue;
+            if (!mem.eql(u8, syms[i].token.data, "entry_point")) continue;
+            i += 1;
+            _ = syms[i].expect(.st_eq) orelse continue;
+            i += 1;
+            r = syms[i].expectEither(&.{ .exp_true, .exp_false }) orelse continue;
+            if (r == .exp_false) continue;
+            i += 1;
+            _ = syms[i].expect(.op_rparan) orelse continue;
+            i += 1;
+            var cbracket: u32 = 1;
+            var expr = std.ArrayList(u8).init(allocator);
+            _ = syms[i].expect(.op_lcbracket) orelse continue;
+            try expr.append(syms[i].token.data[0]);
+            try expr.append('\n');
+            i += 1;
+            // whatever here is THE expression:
+            while (cbracket > 0) : (i += 1) {
+                var rr = syms[i].expect(.op_lcbracket);
+                if (rr != null) cbracket += 1;
+
+                rr = syms[i].expect(.op_rcbracket);
+                if (rr != null) {
+                    cbracket -= 1;
+                    if (cbracket == 0) try expr.append('\n');
+                }
+
+                for (syms[i].token.data) |c| try expr.append(c);
+                try expr.append(' ');
+
+                rr = syms[i].expect(.st_semicolon);
+                if (rr != null) try expr.append('\n');
+            }
+            _ = syms[i].expect(.st_semicolon) orelse continue;
+            try expr.append(syms[i].token.data[0]);
+            ml.info("Found \"entry point let\" => {s} : {s}", .{ let_ident.token.data, expr.items });
+        }
+
         break :arena_alloc_blk;
     }
 }
